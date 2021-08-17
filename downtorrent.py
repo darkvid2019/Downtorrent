@@ -200,7 +200,7 @@ class TorrentAddingDialog(QDialog):
             if item.checkState(0) == Qt.Checked:
                 file_paths.append(node.path)
         if not self._torrent_info.download_info.single_file_mode:
-            self._torrent_info.download_info.select_files(file_paths, 'listeblanche')
+            self._torrent_info.download_info.select_files(file_paths, 'whitelist')
 
         self._control_thread.loop.call_soon_threadsafe(self._control.add, self._torrent_info)
 
