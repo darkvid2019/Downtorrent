@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import asyncio
 import logging
@@ -8,10 +10,11 @@ from functools import partial, partialmethod
 from math import floor
 from typing import Dict, List, Optional
 
+# noinspection PyUnresolvedReferences
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-
+# noinspection PyUnresolvedReferences
 from PyQt5.QtGui import QIcon, QFont, QDropEvent
-
+# noinspection PyUnresolvedReferences
 from PyQt5.QtWidgets import QWidget, QListWidget, QAbstractItemView, QLabel, QVBoxLayout, QProgressBar, \
     QListWidgetItem, QMainWindow, QApplication, QFileDialog, QMessageBox, QDialog, QDialogButtonBox, QTreeWidget, \
     QTreeWidgetItem, QHeaderView, QHBoxLayout, QPushButton, QLineEdit, QAction
@@ -40,7 +43,7 @@ def get_directory(directory: Optional[str]):
 
 
 class TorrentAddingDialog(QDialog):
-    SELECTION_LABEL_FORMAT = 'Selectionné {} fichiers ({})'
+    SELECTION_LABEL_FORMAT = 'Selected {} files ({})'
 
     def _traverse_file_tree(self, name: str, node: FileTreeNode, parent: QWidget):
         item = QTreeWidgetItem(parent)
@@ -65,7 +68,7 @@ class TorrentAddingDialog(QDialog):
         self._path_edit.setReadOnly(True)
         hbox.addWidget(self._path_edit, 3)
 
-        browse_button = QPushButton('Rechercher...')
+        browse_button = QPushButton('Browse...')
         browse_button.clicked.connect(self._browse)
         hbox.addWidget(browse_button, 1)
 
@@ -73,7 +76,7 @@ class TorrentAddingDialog(QDialog):
         return widget
 
     def _browse(self):
-        new_download_dir = QFileDialog.getExistingDirectory(self, 'Selectionné le chemin de téléchargement', self._download_dir)
+        new_download_dir = QFileDialog.getExistingDirectory(self, 'Select download directory', self._download_dir)
         if not new_download_dir:
             return
 
@@ -81,7 +84,7 @@ class TorrentAddingDialog(QDialog):
         self._path_edit.setText(new_download_dir)
 
     def __init__(self, parent: QWidget, filename: str, torrent_info: TorrentInfo,
-                 control_thread: 'Fil du gestionnaire de contrôle'):
+                 control_thread: 'ControlManagerThread'):
         super().__init__(parent)
         self._torrent_info = torrent_info
         download_info = torrent_info.download_info
@@ -91,10 +94,10 @@ class TorrentAddingDialog(QDialog):
         vbox = QVBoxLayout(self)
 
         self._download_dir = get_directory(self._control.last_download_dir)
-        vbox.addWidget(QLabel('Répertoire de téléchargements:'))
+        vbox.addWidget(QLabel('Download directory:'))
         vbox.addWidget(self._get_directory_browse_widget())
 
-        vbox.addWidget(QLabel('Annonces URLs:'))
+        vbox.addWidget(QLabel('Announce URLs:'))
 
         url_tree = QTreeWidget()
         url_tree.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
@@ -102,7 +105,7 @@ class TorrentAddingDialog(QDialog):
         vbox.addWidget(url_tree)
         for i, tier in enumerate(torrent_info.announce_list):
             tier_item = QTreeWidgetItem(url_tree)
-            tier_item.setText(0, 'Niveau {}'.format(i + 1))
+            tier_item.setText(0, 'Tier {}'.format(i + 1))
             for url in tier:
                 url_item = QTreeWidgetItem(tier_item)
                 url_item.setText(0, url)
@@ -111,7 +114,7 @@ class TorrentAddingDialog(QDialog):
 
         file_tree = QTreeWidget()
         file_tree.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        file_tree.setHeaderLabels(('Nom', 'Taille'))
+        file_tree.setHeaderLabels(('Name', 'Size'))
         file_tree.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self._file_items = []
         self._traverse_file_tree(download_info.suggested_name, download_info.file_tree, file_tree)
@@ -132,7 +135,7 @@ class TorrentAddingDialog(QDialog):
         vbox.addWidget(self._button_box)
 
         self.setFixedSize(450, 550)
-        self.setWindowTitle('Ajouter "{}"'.format(filename))
+        self.setWindowTitle('Adding "{}"'.format(filename))
 
     def _set_check_state_to_tree(self, item: QTreeWidgetItem, check_state: Qt.CheckState):
         for i in range(item.childCount()):
@@ -185,7 +188,7 @@ class TorrentAddingDialog(QDialog):
         ok_button = self._button_box.button(QDialogButtonBox.Ok)
         if not selected_file_count:
             ok_button.setEnabled(False)
-            self._selection_label.setText('Rien à télécharger')
+            self._selection_label.setText('Nothing to download')
         else:
             ok_button.setEnabled(True)
             self._selection_label.setText(TorrentAddingDialog.SELECTION_LABEL_FORMAT.format(
@@ -259,33 +262,33 @@ class TorrentListWidgetItem(QWidget):
     def _update(self):
         state = self._state
 
-        self._name_label.setText(state.suggested_name) 
+        self._name_label.setText(state.suggested_name)  # FIXME: Avoid XSS in all setText calls
 
         if state.downloaded_size < state.selected_size:
-            status_text = '{} de {}'.format(humanize_size(state.downloaded_size), humanize_size(state.selected_size))
+            status_text = '{} of {}'.format(humanize_size(state.downloaded_size), humanize_size(state.selected_size))
         else:
-            status_text = '{} (completé)'.format(humanize_size(state.selected_size))
+            status_text = '{} (complete)'.format(humanize_size(state.selected_size))
         status_text += ', Ratio: {:.1f}'.format(state.ratio)
         self._upper_status_label.setText(status_text)
 
         self._progress_bar.setValue(floor(state.progress * 1000))
 
         if self.waiting_control_action:
-            status_text = 'Attente'
+            status_text = 'Waiting'
         elif state.paused:
-            status_text = 'Pause'
+            status_text = 'Paused'
         elif state.complete:
-            status_text = 'Téléchargement vers {} de {} peers'.format(state.uploading_peer_count, state.total_peer_count)
+            status_text = 'Uploading to {} of {} peers'.format(state.uploading_peer_count, state.total_peer_count)
             if state.upload_speed:
                 status_text += ' on {}'.format(humanize_speed(state.upload_speed))
         else:
-            status_text = 'Téléchargement à partir {} de {} peers'.format(
+            status_text = 'Downloading from {} of {} peers'.format(
                 state.downloading_peer_count, state.total_peer_count)
             if state.download_speed:
                 status_text += ' on {}'.format(humanize_speed(state.download_speed))
             eta_seconds = state.eta_seconds
             if eta_seconds is not None:
-                status_text += ', {} restant'.format(humanize_time(eta_seconds) if eta_seconds is not None else None)
+                status_text += ', {} remaining'.format(humanize_time(eta_seconds) if eta_seconds is not None else None)
         self._lower_status_label.setText(status_text)
 
 
@@ -316,38 +319,38 @@ class TorrentListWidget(QListWidget):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, control_thread: 'Fil du gestionnaire de contrôle'):
+    def __init__(self, control_thread: 'ControlManagerThread'):
         super().__init__()
 
         self._control_thread = control_thread
         control = control_thread.control
 
-        toolbar = self.addToolBar('Sorties')
+        toolbar = self.addToolBar('Exits')
         toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         toolbar.setMovable(False)
 
-        self._add_action = toolbar.addAction(load_icon('ajout'), 'Ajout')
+        self._add_action = toolbar.addAction(load_icon('add'), 'Add')
         self._add_action.triggered.connect(self._add_torrents_triggered)
 
         self._pause_action = toolbar.addAction(load_icon('pause'), 'Pause')
         self._pause_action.setEnabled(False)
         self._pause_action.triggered.connect(partial(self._control_action_triggered, control.pause))
 
-        self._resume_action = toolbar.addAction(load_icon('reprendre'), 'Reprendre')
+        self._resume_action = toolbar.addAction(load_icon('resume'), 'Resume')
         self._resume_action.setEnabled(False)
         self._resume_action.triggered.connect(partial(self._control_action_triggered, control.resume))
 
-        self._remove_action = toolbar.addAction(load_icon('enlever'), 'Enlever')
+        self._remove_action = toolbar.addAction(load_icon('remove'), 'Remove')
         self._remove_action.setEnabled(False)
         self._remove_action.triggered.connect(partial(self._control_action_triggered, control.remove))
 
-        self._about_action = toolbar.addAction(load_icon('propos'), 'propos')
+        self._about_action = toolbar.addAction(load_icon('about'), 'About')
         self._about_action.triggered.connect(self._show_about)
 
         self._list_widget = TorrentListWidget()
         self._list_widget.itemSelectionChanged.connect(self._update_control_action_state)
         self._list_widget.files_dropped.connect(self.add_torrent_files)
-        self._torrent_to_item = {}  
+        self._torrent_to_item = {}  # type: Dict[bytes, QListWidgetItem]
 
         self.setCentralWidget(self._list_widget)
 
@@ -426,16 +429,16 @@ class MainWindow(QMainWindow):
                 self._control_thread.control.last_torrent_dir = os.path.abspath(os.path.dirname(path))
 
                 if torrent_info.download_info.info_hash in self._torrent_to_item:
-                    raise ValueError('Ce torrent est déjà ajouté')
+                    raise ValueError('This torrent is already added')
             except Exception as err:
-                self._error_happened('Échec de l\'ajout "{}"'.format(path), err)
+                self._error_happened('Failed to add "{}"'.format(path), err)
                 continue
 
             TorrentAddingDialog(self, path, torrent_info, self._control_thread).exec()
 
     def _add_torrents_triggered(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, 'Ajouts torrents', self._control_thread.control.last_torrent_dir,
-                                                'Fichiers torrents (*.torrent);;All files (*)')
+        paths, _ = QFileDialog.getOpenFileNames(self, 'Add torrents', self._control_thread.control.last_torrent_dir,
+                                                'Torrent file (*.torrent);;All files (*)')
         self.add_torrent_files(paths)
 
     @staticmethod
@@ -472,7 +475,7 @@ class ControlManagerThread(QThread):
     def __init__(self):
         super().__init__()
 
-        self._loop = None  
+        self._loop = None  # type: asyncio.AbstractEventLoop
         self._control = ControlManager()
         self._control_server = ControlServer(self._control, None)
         self._stopping = False
@@ -495,7 +498,7 @@ class ControlManagerThread(QThread):
             try:
                 self._control.load_state()
             except Exception as err:
-                self.error_happened.emit('Échec du chargement de l\'état du programme', err)
+                self.error_happened.emit('Failed to load program state', err)
             self._control.invoke_state_dumps()
 
             self._loop.run_forever()
@@ -541,7 +544,7 @@ def main():
     with closing(asyncio.get_event_loop()) as loop:
         if loop.run_until_complete(find_another_daemon(args.filenames)):
             if not args.filenames:
-                QMessageBox.critical(None, 'Failed to start', 'Une autre instance de programme est déjà en cours d\'exécution')
+                QMessageBox.critical(None, 'Failed to start', 'Another program instance is already running')
             return
 
     control_thread = ControlManagerThread()
